@@ -1,0 +1,44 @@
+cargo-features = ["profile-rustflags"]
+
+[package]
+name = "filematch"
+version = "0.1.1"
+edition = "2021"
+authors = ["Parrot7483"]
+publish = false
+
+[dependencies]
+clap = { version = "4", default-features = false, features = ["std", "help", "usage", "error-context"] }
+crossbeam-channel = "0.5.14"
+gxhash = { version = "3.4.1" }
+num_cpus = "1.16.0"
+walkdir = "2"
+
+[dev-dependencies]
+rand_xoshiro = "0.7"
+
+[profile.dev]
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[profile.release]
+strip = true
+lto = true
+panic = "abort"
+debug = false
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[profile.bench]
+strip = false
+lto = false
+debug = true
+rustflags = ["-C", "target-feature=+aes,+sse2"]
+
+[[bin]]
+name = "filematch"
+path = "src/main.rs"
+test = false
+
+[[bench]]
+name = "benchmark"
+harness = false
+# TODO: Prevent running tests when running benchmarks
