@@ -25,11 +25,11 @@ Options:
 
 Filematch is developed in Rust and utilizes the following crates:
 
-- ![Rayon](https://github.com/rayon-rs/rayon): Enables efficient multi-threading using parallel iterators for high-performance processing.
+- ![Crossbeam](https://github.com/crossbeam-rs/crossbeam): Enables efficient multi-threading.
+- ![GxHash](https://github.com/ogxd/gxhash): Fastest non-cryptographic hashing algorithm
 - ![clap](https://github.com/clap-rs/clap): Provides command-line argument parsing and option handling.
 - ![walkdir](https://github.com/BurntSushi/walkdir): Facilitates recursive directory traversal.
 
-Filematch uses Rust's default hash algorithm (`std::collections::hash_map::DefaultHasher`).
 
 To compile the program, simply run `cargo build --release` or `nix build`.
 
@@ -39,14 +39,14 @@ To compile the program, simply run `cargo build --release` or `nix build`.
 - [ ] Package for nixpkgs
 
 ### Benchmark
-- [ ] Implement benchmark testing to evaluate and optimize performance.
+- [x] Implement benchmark testing to evaluate and optimize performance.
 
 ### Logging and Debugging
 - [ ] Add verbose logging to provide detailed information about the comparison process, including progress.
 
 ### Hashing
 - Add support for selecting different hash algorithms:
-  - [ ] **Fast hashing**: Integrate [gxhash](https://github.com/ogxd/gxhash) for high-performance comparisons.
+  - [x] **Fast hashing**: Integrate [gxhash](https://github.com/ogxd/gxhash) for higher performance comparisons.
   - [ ] **Cryptographic hashing**: Add SHA-256 for scenarios where stronger hashing is required.
   - [ ] **Partial hashing**: Implement an algorithm that compares only the first 8192 bytes of each file for quicker approximations.
 
