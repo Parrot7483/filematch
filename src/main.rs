@@ -38,6 +38,12 @@ fn main() {
                 .long("relative")
                 .action(clap::ArgAction::SetTrue),
         )
+        .arg(
+            Arg::new("blake")
+                .help("Use BLAKE3 cryptographic hash function")
+                .long("blake")
+                .action(clap::ArgAction::SetTrue),
+        )
         .get_matches();
 
     // Extract required positional arguments
@@ -64,10 +70,11 @@ fn main() {
     let sort = *matches.get_one::<bool>("sort").unwrap_or(&false);
     let skip_hidden = *matches.get_one::<bool>("skip-hidden").unwrap_or(&false);
     let relative = *matches.get_one::<bool>("relative").unwrap_or(&false);
+    let blake = *matches.get_one::<bool>("blake").unwrap_or(&false);
 
     // Call the function to compare directories
     let (intersection_paths, unique_dir1_paths, unique_dir2_paths) =
-        compare_directories(&dir1, &dir2, sort, skip_hidden, relative);
+        compare_directories(&dir1, &dir2, sort, skip_hidden, relative, blake);
 
     // Print the results
     println!(

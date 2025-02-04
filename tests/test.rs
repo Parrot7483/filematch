@@ -55,7 +55,7 @@ fn test_general() -> Result<(), Box<dyn std::error::Error>> {
 
     // Call the `compare_directories` function
     let (intersection_paths, unique_dir1_paths, unique_dir2_paths) =
-        compare_directories(&dir1, &dir2, false, false, false);
+        compare_directories(&dir1, &dir2, false, false, false, false);
 
     // Convert results to HashSet for comparison
     let intersection_set: HashSet<_> = intersection_paths.into_iter().collect();
@@ -124,7 +124,7 @@ fn test_hidden() -> Result<(), Box<dyn std::error::Error>> {
     // Call the `compare_directories` function
     println!("{:?}", expected_intersection);
     let (intersection_paths, unique_dir1_paths, unique_dir2_paths) =
-        compare_directories(&dir1, &dir2, false, true, false);
+        compare_directories(&dir1, &dir2, false, true, false, false);
 
     // Convert results to HashSet for comparison
     let intersection_set: HashSet<_> = intersection_paths.into_iter().collect();

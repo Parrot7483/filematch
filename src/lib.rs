@@ -1,3 +1,5 @@
+use blake3::Hash;
+use blake3::Hasher as BlakeHasher;
 use crossbeam_channel::{select, unbounded, Receiver};
 use gxhash::GxHasher;
 use num_cpus;
@@ -7,6 +9,7 @@ use std::fs::File;
 use std::hash::Hasher;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::thread::JoinHandle;
 use std::thread;
 use walkdir::{DirEntry, WalkDir};
 
@@ -66,6 +69,25 @@ fn calculate_file_hash(path: &Path) -> io::Result<u64> {
     }
 }
 
+/// A function that calculates a file hash using Blake3 cryptographic
+/// hash function
+fn calculate_file_hash_blake(path: &Path) -> io::Result<Hash>
+{
+    let mut file = File::open(path)?;
+    let mut hasher = BlakeHasher::default();
+    let mut buffer = vec![0; 64 * 1024];
+
+    loop {
+        let bytes_read = file.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    Ok(hasher.finalize())
+}
+
 /// Compares two `HashMap`s and computes the intersection, values unique to the first map,
 /// and items values to the second map based on the key.
 ///
@@ -78,6 +100,7 @@ fn calculate_file_hash(path: &Path) -> io::Result<u64> {
 /// 1. A `Vec` containing all values for the keys common to both maps.
 /// 2. A `Vec` containing all values unique to `map1`.
 /// 3. A `Vec` containing all values unique to `map2`.
+///
 fn compare_hashmaps<K: Eq + std::hash::Hash + std::clone::Clone, V: Clone>(
     map1: &HashMap<K, Vec<V>>,
     map2: &HashMap<K, Vec<V>>,
@@ -126,26 +149,32 @@ fn is_hidden(entry: &DirEntry) -> bool {
         .unwrap_or(false)
 }
 
-fn worker(
+
+fn worker<F, H>(
     r1: Receiver<PathBuf>,
     r2: Receiver<PathBuf>,
-) -> Result<(HashMap<u64, Vec<PathBuf>>, HashMap<u64, Vec<PathBuf>>), io::Error> {
-    let mut map1: HashMap<u64, Vec<PathBuf>> = HashMap::new();
-    let mut map2: HashMap<u64, Vec<PathBuf>> = HashMap::new();
+    fn_file_hash: F,
+) -> Result<(HashMap<H, Vec<PathBuf>>, HashMap<H, Vec<PathBuf>>), io::Error>
+where
+    F: Fn(&Path) -> io::Result<H>,
+    H: Eq + std::hash::Hash,
+ {
+    let mut map1: HashMap<H, Vec<PathBuf>> = HashMap::new();
+    let mut map2: HashMap<H, Vec<PathBuf>> = HashMap::new();
 
     loop {
         select! {
             recv(r1) -> msg => {
                 match msg {
                     Ok(path) => {
-                        let hash = calculate_file_hash(&path)?;
-                        map1.entry(hash).or_default().push(path);
+                        let key = fn_file_hash(&path)?;
+                        map1.entry(key).or_default().push(path);
                     }
                     Err(_) => {
                         // r1 closed; drain r2 and exit.
                         for path in r2.iter() {
-                            let hash = calculate_file_hash(&path)?;
-                            map2.entry(hash).or_default().push(path);
+                            let key = fn_file_hash(&path)?;
+                            map2.entry(key).or_default().push(path);
                         }
                         break;
                     }
@@ -154,13 +183,13 @@ fn worker(
             recv(r2) -> msg => {
                 match msg {
                     Ok(path) => {
-                        let hash = calculate_file_hash(&path)?;
-                        map2.entry(hash).or_default().push(path);
+                        let key = fn_file_hash(&path)?;
+                        map2.entry(key).or_default().push(path);
                     }
                     Err(_) => {
                         for path in r1.iter() {
-                            let hash = calculate_file_hash(&path)?;
-                            map2.entry(hash).or_default().push(path);
+                            let key = fn_file_hash(&path)?;
+                            map2.entry(key).or_default().push(path);
                         }
                         break;
                     }
@@ -170,6 +199,46 @@ fn worker(
     }
 
     Ok((map1, map2))
+}
+
+/// Merges hash maps from threads, making paths relative if needed.
+fn collect_results<H>(
+    handles: Vec<JoinHandle<Result<(HashMap<H, Vec<PathBuf>>, HashMap<H, Vec<PathBuf>>), std::io::Error>>>,
+    relative: bool,
+    dir1: &Path,
+    dir2: &Path,
+) -> (HashMap<H, Vec<PathBuf>>, HashMap<H, Vec<PathBuf>>)
+where
+    H: Eq + std::hash::Hash,
+{
+    let mut combined1: HashMap<H, Vec<PathBuf>> = HashMap::new();
+    let mut combined2: HashMap<H, Vec<PathBuf>> = HashMap::new();
+
+    for handle in handles {
+        let (map1, map2) = handle.join().expect("Thread panicked").unwrap();
+
+        for (key, mut vec) in map1 {
+            if relative {
+                vec = vec
+                    .into_iter()
+                    .map(|path| path.strip_prefix(dir1).unwrap().to_path_buf())
+                    .collect();
+            };
+            combined1.entry(key).or_default().extend(vec);
+        }
+
+        for (key, mut vec) in map2 {
+            if relative {
+                vec = vec
+                    .into_iter()
+                    .map(|path| path.strip_prefix(dir2).unwrap().to_path_buf())
+                    .collect();
+            };
+            combined2.entry(key).or_default().extend(vec);
+        }
+    }
+
+    (combined1, combined2)
 }
 
 /// Compares two directories and returns their file paths.
@@ -183,24 +252,31 @@ pub fn compare_directories(
     sort: bool,
     skip_hidden: bool,
     relative: bool,
+    crypto: bool,
 ) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>) {
     let num_threads = num_cpus::get_physical();
 
-    // Create two channels.
+    // Create channels
     let (sender1, receiver1) = unbounded();
     let (sender2, receiver2) = unbounded();
 
     let mut handles = Vec::new();
+    let mut handles_blake = Vec::new();
 
-    // Spawn four threads.
+    // Spawn worker threads using the appropriate hash function
     for _ in 0..num_threads {
         let r1 = receiver1.clone();
         let r2 = receiver2.clone();
-        let handle = thread::spawn(move || worker(r1, r2));
-        handles.push(handle);
+        if crypto {
+            let handle = thread::spawn(move || worker(r1, r2, calculate_file_hash_blake));
+            handles_blake.push(handle);
+        } else {
+            let handle = thread::spawn(move || worker(r1, r2, calculate_file_hash));
+            handles.push(handle);
+        };
     }
 
-    // Send messages into both channels.
+    // Send messages into both channels
     WalkDir::new(dir1)
         .into_iter()
         .filter_entry(|e| !skip_hidden || !is_hidden(e))
@@ -227,41 +303,19 @@ pub fn compare_directories(
             Err(e) => panic!("Error retrieving path: {}", e),
         });
 
-    // Close the channels.
+    // Close the channels
     drop(sender1);
     drop(sender2);
 
-    // Collect and combine results.
-    let mut combined1: HashMap<u64, Vec<PathBuf>> = HashMap::new();
-    let mut combined2: HashMap<u64, Vec<PathBuf>> = HashMap::new();
-
-    for handle in handles {
-        let (map1, map2) = handle.join().expect("Thread panicked").unwrap();
-
-        for (key, mut vec) in map1 {
-            if relative {
-                vec = vec
-                    .into_iter()
-                    .map(|path| path.strip_prefix(dir1).unwrap().to_path_buf())
-                    .collect();
-            };
-            combined1.entry(key).or_default().extend(vec);
-        }
-
-        for (key, mut vec) in map2 {
-            if relative {
-                vec = vec
-                    .into_iter()
-                    .map(|path| path.strip_prefix(dir2).unwrap().to_path_buf())
-                    .collect();
-            };
-            combined2.entry(key).or_default().extend(vec);
-        }
-    }
-
+    // Collect results
     // Compute intersection, files unique to dir1, files unique to dir2
-    let (mut intersection_paths, mut unique_dir1_paths, mut unique_dir2_paths) =
-        compare_hashmaps(&combined1, &combined2);
+    let (mut intersection_paths, mut unique_dir1_paths, mut unique_dir2_paths) = if crypto {
+        let (combined1, combined2) = collect_results(handles_blake, relative, dir1, dir2);
+        compare_hashmaps(&combined1, &combined2)
+    } else {
+        let (combined1, combined2) = collect_results(handles, relative, dir1, dir2);
+        compare_hashmaps(&combined1, &combined2)
+    };
 
     if sort {
         intersection_paths.sort();
