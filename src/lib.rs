@@ -44,23 +44,23 @@ where
 fn calculate_file_hash(path: &Path) -> io::Result<u64> {
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     {
-        if std::is_x86_feature_detected!("aes") {
+        if std::is_x86_feature_detected!("aes") && std::is_x86_feature_detected!("sse2") {
             calculate_file_hash_generic::<GxHasher>(path)
         } else {
             calculate_file_hash_generic::<DefaultHasher>(path)
         }
     }
 
-    #[cfg(target_arch = "aarch64")]
+    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
     {
-        if std::is_aarch64_feature_detected!("sse2") {
+        if std::is_x86_feature_detected!("aes") && std::is_x86_feature_detected!("neon") {
             calculate_file_hash_generic::<GxHasher>(path)
         } else {
             calculate_file_hash_generic::<DefaultHasher>(path)
         }
     }
 
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64")))]
     {
         calculate_file_hash_generic::<DefaultHasher>(path)
     }
