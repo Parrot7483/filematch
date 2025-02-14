@@ -57,7 +57,7 @@ fn test_general() -> Result<(), Box<dyn std::error::Error>> {
     let (Some(intersection_paths), Some(unique_dir1_paths), Some(unique_dir2_paths)) =
         compare_directories(&dir1, &dir2, false, false, false, true, true, true)
     else {
-        todo!("TODO")
+        panic!("compare_directories did not return the expected result.");
     };
 
     // Convert results to HashSet for comparison
@@ -129,7 +129,7 @@ fn test_hidden() -> Result<(), Box<dyn std::error::Error>> {
     let (Some(intersection_paths), Some(unique_dir1_paths), Some(unique_dir2_paths)) =
         compare_directories(&dir1, &dir2, false, true, false, true, true, true)
     else {
-        todo!("TODO")
+        panic!("compare_directories did not return the expected result.");
     };
 
     // Convert results to HashSet for comparison

@@ -197,8 +197,6 @@ fn setup_benchmark_files(
     Ok((dir_ab_files, dir_a_files, dir_b_files))
 }
 
-// TODO Get available disk space
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create directories and subdirectories
     let base = std::env::temp_dir().join("filematch-bench");
@@ -248,7 +246,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             true,
             true,
         ) else {
-            todo!("TODO")
+            panic!("compare_directories did not return the expected result.");
         };
 
         let elapsed = start.elapsed();
