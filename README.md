@@ -1,29 +1,35 @@
 # filematch
 
-Filematch compares the content of files in two directories by calculating their hash. This approach helps you find duplicates or check if files have changed.
+filematch compares the content of files in two directories by calculating their hash. This approach helps you find duplicates or check if files have changed. It was created to deduplicate my backups scattered over multiple drives.
 
 ## Usage
 
 ```
 Compares files between two directories by hash
 
-Usage: filematch [OPTIONS] <directory1> <directory2>
+Usage: filematch [OPTIONS] <DIRECTORY1> <DIRECTORY2>
 
 Arguments:
-  <directory1>  The first directory to compare
-  <directory2>  The second directory to compare
+  <DIRECTORY1>  The first directory to compare
+  <DIRECTORY2>  The second directory to compare
 
 Options:
-      --sort         Sort output paths
-      --skip-hidden  Skip hidden files and directories
-      --relative     Display output paths relative to argument directory
-  -h, --help         Print help
-  -V, --version      Print version
+      --sort          Sort output paths
+      --skip-hidden   Skip hidden files and directories
+      --relative      Display output paths relative to argument directory
+      --json          Display as json
+      --intersection  Display files both in directory1 and directory2
+      --dir1          Display unique files in dir1
+      --dir2          Display unique files in dir2
+  -h, --help          Print help
+  -V, --version       Print version
+
+If none of --intersection, --dir1, or --dir2 are set, then all are displayed
 ```
 
 ## Technical Overview
 
-Filematch is developed in Rust and utilizes the following crates:
+filematch is developed in Rust and utilizes the following crates:
 
 - ![Crossbeam](https://github.com/crossbeam-rs/crossbeam): Enables efficient multi-threading.
 - ![BLAKE3](https://github.com/BLAKE3-team/BLAKE3): Modern cryptographic hashing algorithm
@@ -33,26 +39,28 @@ Filematch is developed in Rust and utilizes the following crates:
 To compile the program, simply run `cargo build --release` or `nix build`.
 
 ## Planned improvements and features:
+- [ ] Detect running on HDD. Do not multithread in that case.
 
 ### Packaging
 - [ ] Package for nixpkgs
+- [ ] Package for Debian
 - [ ] CI/CD
 
 ### Development 
 - [x] Implement benchmark testing to evaluate and optimize performance.
 
 ### Logging and Debugging
-- [ ] Add verbose logging to provide detailed information about the comparison process, 
 - [ ] Progress Bar.
+- [ ] Add verbose logging to provide detailed information about the comparison process, 
 
 ### Hashing
 - [x] **Cryptographic hashing**: Add cryptographic for scenarios where stronger hashing is required
 - [ ] **Partial hashing**: Implement an algorithm that compares only the first page of each file for quicker approximations.
 
 ### Output Customization
-- [ ] Display only the intersection (common files between directories).
-- [ ] Display only unique files in `directory1` or `directory2`.
-- [ ] Ouput as JSON
+- [x] Display only the intersection (common files between directories).
+- [x] Display only unique files in `directory1` or `directory2`.
+- [x] Ouput as JSON
 
 ## Example 1: Basic
 Directory structure:

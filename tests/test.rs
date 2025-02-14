@@ -54,8 +54,11 @@ fn test_general() -> Result<(), Box<dyn std::error::Error>> {
     let expected_unique_dir2: HashSet<PathBuf> = vec![unique2, unique_sub2].into_iter().collect();
 
     // Call the `compare_directories` function
-    let (intersection_paths, unique_dir1_paths, unique_dir2_paths) =
-        compare_directories(&dir1, &dir2, false, false, false);
+    let (Some(intersection_paths), Some(unique_dir1_paths), Some(unique_dir2_paths)) =
+        compare_directories(&dir1, &dir2, false, false, false, true, true, true)
+    else {
+        todo!("TODO")
+    };
 
     // Convert results to HashSet for comparison
     let intersection_set: HashSet<_> = intersection_paths.into_iter().collect();
@@ -123,8 +126,11 @@ fn test_hidden() -> Result<(), Box<dyn std::error::Error>> {
 
     // Call the `compare_directories` function
     println!("{:?}", expected_intersection);
-    let (intersection_paths, unique_dir1_paths, unique_dir2_paths) =
-        compare_directories(&dir1, &dir2, false, true, false);
+    let (Some(intersection_paths), Some(unique_dir1_paths), Some(unique_dir2_paths)) =
+        compare_directories(&dir1, &dir2, false, true, false, true, true, true)
+    else {
+        todo!("TODO")
+    };
 
     // Convert results to HashSet for comparison
     let intersection_set: HashSet<_> = intersection_paths.into_iter().collect();

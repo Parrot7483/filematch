@@ -1,93 +1,162 @@
-use clap::{Arg, Command};
+use clap::Parser;
 use filematch::compare_directories;
+use serde_json::json;
 use std::path::PathBuf;
 
-fn main() {
-    // Define the CLI with `clap`
-    let matches = Command::new("filematch")
-        .version(env!("CARGO_PKG_VERSION")) // Use the version from Cargo.toml
-        .author(env!("CARGO_PKG_AUTHORS")) // Use the authors from Cargo.toml
-        .about("Compares files between two directories by hash")
-        .arg(
-            Arg::new("directory1")
-                .help("The first directory to compare")
-                .required(true)
-                .index(1),
-        )
-        .arg(
-            Arg::new("directory2")
-                .help("The second directory to compare")
-                .required(true)
-                .index(2),
-        )
-        .arg(
-            Arg::new("sort")
-                .help("Sort output paths")
-                .long("sort")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("skip-hidden")
-                .help("Skip hidden files and directories")
-                .long("skip-hidden")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .arg(
-            Arg::new("relative")
-                .help("Display output paths relative to argument directory")
-                .long("relative")
-                .action(clap::ArgAction::SetTrue),
-        )
-        .get_matches();
+// Compares files between two directories by hash
+#[derive(Parser)]
+#[command(
+    version = env!("CARGO_PKG_VERSION"),
+    author = env!("CARGO_PKG_AUTHORS"),
+    about = "Compares files between two directories by hash",
+    after_help = "If none of --intersection, --dir1, or --dir2 are set, then all are displayed",
+)]
+struct Cli {
+    /// The first directory to compare
+    #[arg(required = true)]
+    directory1: PathBuf,
 
-    // Extract required positional arguments
-    let dir1 = PathBuf::from(matches.get_one::<String>("directory1").unwrap());
-    let dir2 = PathBuf::from(matches.get_one::<String>("directory2").unwrap());
+    /// The second directory to compare
+    #[arg(required = true)]
+    directory2: PathBuf,
+
+    /// Sort output paths
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    sort: bool,
+
+    /// Skip hidden files and directories
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    skip_hidden: bool,
+
+    /// Display output paths relative to argument directory
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    relative: bool,
+
+    /// Display as json
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    json: bool,
+
+    /// Display files both in directory1 and directory2
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    intersection: bool,
+
+    /// Display unique files in dir1
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    dir1: bool,
+
+    /// Display unique files in dir2
+    #[arg(long, action = clap::ArgAction::SetTrue)]
+    dir2: bool,
+}
+
+fn main() {
+    let args = Cli::parse();
 
     // Validate directories
-    if !dir1.is_dir() {
+    if !args.directory1.is_dir() {
         eprintln!(
             "Error: '{}' does not exist or is not a directory.",
-            dir1.display()
+            args.directory1.display()
         );
         std::process::exit(1);
     }
-    if !dir2.is_dir() {
+    if !args.directory2.is_dir() {
         eprintln!(
             "Error: '{}' does not exist or is not a directory.",
-            dir2.display()
+            args.directory2.display()
         );
         std::process::exit(1);
     }
 
-    // Extract flags
-    let sort = *matches.get_one::<bool>("sort").unwrap_or(&false);
-    let skip_hidden = *matches.get_one::<bool>("skip-hidden").unwrap_or(&false);
-    let relative = *matches.get_one::<bool>("relative").unwrap_or(&false);
+    // If no selective directory is set all are true
+    let all = !args.intersection && !args.dir1 && !args.dir2;
+    let intersection = all || args.intersection;
+    let dir1 = all || args.dir1;
+    let dir2 = all || args.dir2;
 
     // Call the function to compare directories
-    let (intersection_paths, unique_dir1_paths, unique_dir2_paths) =
-        compare_directories(&dir1, &dir2, sort, skip_hidden, relative);
-
-    // Print the results
-    println!(
-        "Files both in '{}' and '{}':",
-        dir1.display(),
-        dir2.display()
+    let (intersection_paths, unique_dir1_paths, unique_dir2_paths) = compare_directories(
+        &args.directory1,
+        &args.directory2,
+        args.sort,
+        args.skip_hidden,
+        args.relative,
+        intersection,
+        dir1,
+        dir2,
     );
-    for path in &intersection_paths {
-        println!("{}", path.display());
-    }
-    println!();
 
-    println!("Files unique in '{}':", dir1.display());
-    for path in &unique_dir1_paths {
-        println!("{}", path.display());
-    }
-    println!();
+    if args.json {
+        // Create a JSON value with string representations of the paths.
+        let mut result = serde_json::Map::new();
 
-    println!("Files unique in '{}':", dir2.display());
-    for path in &unique_dir2_paths {
-        println!("{}", path.display());
+        if intersection {
+            result.insert(
+                "intersection".to_string(),
+                json!(intersection_paths
+                    .unwrap()
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()),
+            );
+        }
+
+        if dir1 {
+            result.insert(
+                "directory1".to_string(),
+                json!(unique_dir1_paths
+                    .unwrap()
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()),
+            );
+        }
+
+        if dir2 {
+            result.insert(
+                "directory2".to_string(),
+                json!(unique_dir2_paths
+                    .unwrap()
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()),
+            );
+        }
+
+        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+    } else {
+        // Print the results
+        if intersection {
+            println!(
+                "Files both in '{}' and '{}':",
+                args.directory1.display(),
+                args.directory2.display()
+            );
+            for path in intersection_paths.unwrap() {
+                println!("{}", path.display());
+            }
+        }
+
+        if intersection && dir1 {
+            println!();
+        }
+
+        if dir1 {
+            println!("Files unique in '{}':", &args.directory1.display());
+            for path in unique_dir1_paths.unwrap() {
+                println!("{}", path.display());
+            }
+        }
+
+        if (intersection || dir1) && dir2 {
+            println!();
+        }
+
+        if dir2 {
+            println!("Files unique in '{}':", &args.directory2.display());
+            for path in unique_dir2_paths.unwrap() {
+                println!("{}", path.display());
+            }
+        }
     }
 }

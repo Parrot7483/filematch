@@ -223,14 +223,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Always do one warm up run
     print!("Warm up run...");
     io::stdout().flush().unwrap();
-    let (_, _, _) = compare_directories(&dir_a_path, &dir_b_path, false, false, false);
+    let (_, _, _) = compare_directories(
+        &dir_a_path,
+        &dir_b_path,
+        false,
+        false,
+        false,
+        true,
+        true,
+        true,
+    );
     println!(" DONE!");
 
     for i in 0..times_to_run {
         let start = Instant::now();
         // Call your function here.
-        let (mut dir_12, mut dir_1, mut dir_2) =
-            compare_directories(&dir_a_path, &dir_b_path, false, false, false);
+        let (Some(mut dir_12), Some(mut dir_1), Some(mut dir_2)) = compare_directories(
+            &dir_a_path,
+            &dir_b_path,
+            false,
+            false,
+            false,
+            true,
+            true,
+            true,
+        ) else {
+            todo!("TODO")
+        };
 
         let elapsed = start.elapsed();
 

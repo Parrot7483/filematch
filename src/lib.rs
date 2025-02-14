@@ -1,6 +1,6 @@
-use crossbeam_channel::{select, unbounded, Receiver};
 use blake3::Hash;
 use blake3::Hasher as BlakeHasher;
+use crossbeam_channel::{select, unbounded, Receiver};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{self, Read};
@@ -10,8 +10,7 @@ use walkdir::{DirEntry, WalkDir};
 
 /// A function that calculates a file hash using BLAKE3
 #[inline(always)]
-fn calculate_file_hash(path: &Path) -> io::Result<Hash>
-{
+fn calculate_file_hash(path: &Path) -> io::Result<Hash> {
     let mut file = File::open(path)?;
     let mut hasher = BlakeHasher::default();
     let mut buffer = vec![0; 64 * 1024];
@@ -39,56 +38,56 @@ fn calculate_file_hash(path: &Path) -> io::Result<Hash>
 /// 1. A `Vec` containing all values for the keys common to both maps.
 /// 2. A `Vec` containing all values unique to `map1`.
 /// 3. A `Vec` containing all values unique to `map2`.
-fn compare_hashmaps<K: Eq + std::hash::Hash + std::clone::Clone, V: Clone>(
+#[allow(clippy::type_complexity)]
+pub fn compare_hashmaps<K: Eq + std::hash::Hash + Clone, V: Clone>(
     map1: &HashMap<K, Vec<V>>,
     map2: &HashMap<K, Vec<V>>,
-) -> (Vec<V>, Vec<V>, Vec<V>) {
-    // Convert the keys of both maps into `HashSet`s
+    include_intersection: bool,
+    include_unique_dir1: bool,
+    include_unique_dir2: bool,
+) -> (Option<Vec<V>>, Option<Vec<V>>, Option<Vec<V>>) {
     let set1: HashSet<_> = map1.keys().cloned().collect();
     let set2: HashSet<_> = map2.keys().cloned().collect();
-
-    // Compute the intersection keys
     let intersection_keys: HashSet<_> = set1.intersection(&set2).cloned().collect();
 
-    // Create the `intersection` Vec by flattening all values for the intersecting keys
-    let intersection: Vec<V> = intersection_keys
-        .into_iter()
-        .flat_map(|key| {
-            map1.get(&key)
-                .into_iter()
-                .chain(map2.get(&key))
-                .flat_map(|v| v.iter().cloned())
-        })
-        .collect();
+    let intersection = include_intersection.then(|| {
+        intersection_keys
+            .into_iter()
+            .flat_map(|key| {
+                map1.get(&key)
+                    .into_iter()
+                    .chain(map2.get(&key))
+                    .flat_map(|values| values.iter().cloned())
+            })
+            .collect()
+    });
 
-    // Create the `only_in_a` Vec by flattening all values for the keys unique to `map1`
-    let only_in_a: Vec<V> = map1
-        .iter()
-        .filter(|(key, _)| !set2.contains(*key))
-        .flat_map(|(_, value)| value.iter().cloned())
-        .collect();
+    let only_in_a = include_unique_dir1.then(|| {
+        map1.iter()
+            .filter(|(key, _)| !set2.contains(*key))
+            .flat_map(|(_, values)| values.iter().cloned())
+            .collect()
+    });
 
-    // Create the `only_in_b` Vec by flattening all values for the keys unique to `map2`
-    let only_in_b: Vec<V> = map2
-        .iter()
-        .filter(|(key, _)| !set1.contains(*key))
-        .flat_map(|(_, value)| value.iter().cloned())
-        .collect();
+    let only_in_b = include_unique_dir2.then(|| {
+        map2.iter()
+            .filter(|(key, _)| !set1.contains(*key))
+            .flat_map(|(_, values)| values.iter().cloned())
+            .collect()
+    });
 
     (intersection, only_in_a, only_in_b)
 }
 
-// Map to paths with the same hash
-type FilesMap = HashMap<Hash, Vec<PathBuf>>;
-
-/// Receives file paths from two channels, calculates their hash, and groups them into two maps. 
+/// Receives file paths from two channels, calculates their hash, and groups them into two maps.
 /// File paths from r1 go into map1 and from r2 into map2. When one channel closes, it drains the other.
+#[allow(clippy::type_complexity)]
 fn worker(
     r1: Receiver<PathBuf>,
     r2: Receiver<PathBuf>,
-) -> Result<(FilesMap, FilesMap), io::Error> {
-    let mut map1: FilesMap = HashMap::new();
-    let mut map2: FilesMap = HashMap::new();
+) -> Result<(HashMap<Hash, Vec<PathBuf>>, HashMap<Hash, Vec<PathBuf>>), io::Error> {
+    let mut map1: HashMap<Hash, Vec<PathBuf>> = HashMap::new();
+    let mut map2: HashMap<Hash, Vec<PathBuf>> = HashMap::new();
 
     loop {
         select! {
@@ -144,13 +143,22 @@ fn is_hidden(entry: &DirEntry) -> bool {
 /// 1. Files present in both directories.
 /// 2. Files unique to the first directory.
 /// 3. Files unique to the second directory.
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 pub fn compare_directories(
     dir1: &Path,
     dir2: &Path,
     sort: bool,
     skip_hidden: bool,
     relative: bool,
-) -> (Vec<PathBuf>, Vec<PathBuf>, Vec<PathBuf>) {
+    include_intersection: bool,
+    include_unique_dir1: bool,
+    include_unique_dir2: bool,
+) -> (
+    Option<Vec<PathBuf>>,
+    Option<Vec<PathBuf>>,
+    Option<Vec<PathBuf>>,
+) {
     let num_threads = num_cpus::get_physical();
 
     // Create two channels.
@@ -159,7 +167,8 @@ pub fn compare_directories(
 
     let mut handles = Vec::new();
 
-    // Spawn four threads.
+    // TODO: This is very usefull on SSD but multithreading is useless on HDD
+    // Spawn threads.
     for _ in 0..num_threads {
         let r1 = receiver1.clone();
         let r2 = receiver2.clone();
@@ -221,13 +230,24 @@ pub fn compare_directories(
     }
 
     // Compute intersection, files unique to dir1, files unique to dir2
-    let (mut intersection_paths, mut unique_dir1_paths, mut unique_dir2_paths) =
-        compare_hashmaps(&combined1, &combined2);
+    let (mut intersection_paths, mut unique_dir1_paths, mut unique_dir2_paths) = compare_hashmaps(
+        &combined1,
+        &combined2,
+        include_intersection,
+        include_unique_dir1,
+        include_unique_dir2,
+    );
 
     if sort {
-        intersection_paths.sort();
-        unique_dir1_paths.sort();
-        unique_dir2_paths.sort();
+        if let Some(ref mut v) = intersection_paths {
+            v.sort();
+        }
+        if let Some(ref mut v) = unique_dir1_paths {
+            v.sort();
+        }
+        if let Some(ref mut v) = unique_dir2_paths {
+            v.sort();
+        }
     }
 
     (intersection_paths, unique_dir1_paths, unique_dir2_paths)
