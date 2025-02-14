@@ -46,15 +46,13 @@ To compile the program, simply run `cargo build --release` or `nix build`.
 - [ ] Progress Bar.
 
 ### Hashing
-- Add support for selecting different hash algorithms:
-  - [x] **Cryptographic hashing**: Add cryptographic for scenarios where stronger hashing is required
-  - [ ] **Partial hashing**: Implement an algorithm that compares only the first page of each file for quicker approximations.
+- [x] **Cryptographic hashing**: Add cryptographic for scenarios where stronger hashing is required
+- [ ] **Partial hashing**: Implement an algorithm that compares only the first page of each file for quicker approximations.
 
 ### Output Customization
-- Introduce options to filter output:
-  - [ ] Display only the intersection (common files between directories).
-  - [ ] Display only unique files in `directory1` or `directory2`.
-  - [ ] Ouput as JSON
+- [ ] Display only the intersection (common files between directories).
+- [ ] Display only unique files in `directory1` or `directory2`.
+- [ ] Ouput as JSON
 
 ## Example 1: Basic
 Directory structure:
