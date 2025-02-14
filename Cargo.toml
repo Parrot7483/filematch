@@ -8,9 +8,9 @@ authors = ["Parrot7483"]
 publish = false
 
 [dependencies]
+blake3 = "1.5.5"
 clap = { version = "4", default-features = false, features = ["std", "help", "usage", "error-context"] }
 crossbeam-channel = "0.5.14"
-gxhash = { version = "3.4.1" }
 num_cpus = "1.16.0"
 walkdir = "2"
 

@@ -26,10 +26,9 @@ Options:
 Filematch is developed in Rust and utilizes the following crates:
 
 - ![Crossbeam](https://github.com/crossbeam-rs/crossbeam): Enables efficient multi-threading.
-- ![GxHash](https://github.com/ogxd/gxhash): Fastest non-cryptographic hashing algorithm
+- ![BLAKE3](https://github.com/BLAKE3-team/BLAKE3): Modern cryptographic hashing algorithm
 - ![clap](https://github.com/clap-rs/clap): Provides command-line argument parsing and option handling.
 - ![walkdir](https://github.com/BurntSushi/walkdir): Facilitates recursive directory traversal.
-
 
 To compile the program, simply run `cargo build --release` or `nix build`.
 
@@ -37,27 +36,25 @@ To compile the program, simply run `cargo build --release` or `nix build`.
 
 ### Packaging
 - [ ] Package for nixpkgs
+- [ ] CI/CD
 
-### Benchmark
+### Development 
 - [x] Implement benchmark testing to evaluate and optimize performance.
 
 ### Logging and Debugging
-- [ ] Add verbose logging to provide detailed information about the comparison process, including progress.
+- [ ] Add verbose logging to provide detailed information about the comparison process, 
+- [ ] Progress Bar.
 
 ### Hashing
 - Add support for selecting different hash algorithms:
-  - [x] **Fast hashing**: Integrate [gxhash](https://github.com/ogxd/gxhash) for higher performance comparisons.
-  - [ ] **Cryptographic hashing**: Add SHA-256 for scenarios where stronger hashing is required.
-  - [ ] **Partial hashing**: Implement an algorithm that compares only the first 8192 bytes of each file for quicker approximations.
+  - [x] **Cryptographic hashing**: Add cryptographic for scenarios where stronger hashing is required
+  - [ ] **Partial hashing**: Implement an algorithm that compares only the first page of each file for quicker approximations.
 
 ### Output Customization
 - Introduce options to filter output:
   - [ ] Display only the intersection (common files between directories).
   - [ ] Display only unique files in `directory1` or `directory2`.
-
-### Maybe (probably never)
-- [ ] Evaluate replacing the current argument parser **Clap** with ![argh](https://github.com/google/argh) to reduce binary size.
-- [ ] Explore caching file hashes in a database to avoid rehashing during repeated runs.
+  - [ ] Ouput as JSON
 
 ## Example 1: Basic
 Directory structure:

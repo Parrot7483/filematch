@@ -1,31 +1,19 @@
 use crossbeam_channel::{select, unbounded, Receiver};
-use gxhash::GxHasher;
-use num_cpus;
-use std::collections::hash_map::DefaultHasher;
+use blake3::Hash;
+use blake3::Hasher as BlakeHasher;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
-use std::hash::Hasher;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::thread;
 use walkdir::{DirEntry, WalkDir};
 
-// TODO: Options to only display intersection, first or second (with no title)
-// TODO: CI/CD
-// TODO: Options to add count
-// TODO: Verbose log
-// TODO: Crypto hash algo option
-// TODO: Use GxHasher vaes avx512 when available
-// TODO: Benchmark calcualte_file_hash
-
-/// A generic function that calculates a file hash using the provided hasher type.
+/// A function that calculates a file hash using BLAKE3
 #[inline(always)]
-fn calculate_file_hash_generic<H>(path: &Path) -> io::Result<u64>
-where
-    H: Hasher + Default,
+fn calculate_file_hash(path: &Path) -> io::Result<Hash>
 {
     let mut file = File::open(path)?;
-    let mut hasher = H::default();
+    let mut hasher = BlakeHasher::default();
     let mut buffer = vec![0; 64 * 1024];
 
     loop {
@@ -33,37 +21,10 @@ where
         if bytes_read == 0 {
             break;
         }
-        hasher.write(&buffer[..bytes_read]);
+        hasher.update(&buffer[..bytes_read]);
     }
 
-    Ok(hasher.finish())
-}
-
-/// A function that calculates a file hash either using the
-/// DefaultHasher or GxHasher based on if aes or sse2 is available
-fn calculate_file_hash(path: &Path) -> io::Result<u64> {
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    {
-        if std::is_x86_feature_detected!("aes") && std::is_x86_feature_detected!("sse2") {
-            calculate_file_hash_generic::<GxHasher>(path)
-        } else {
-            calculate_file_hash_generic::<DefaultHasher>(path)
-        }
-    }
-
-    #[cfg(any(target_arch = "arm", target_arch = "aarch64"))]
-    {
-        if std::is_x86_feature_detected!("aes") && std::is_x86_feature_detected!("neon") {
-            calculate_file_hash_generic::<GxHasher>(path)
-        } else {
-            calculate_file_hash_generic::<DefaultHasher>(path)
-        }
-    }
-
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "arm", target_arch = "aarch64")))]
-    {
-        calculate_file_hash_generic::<DefaultHasher>(path)
-    }
+    Ok(hasher.finalize())
 }
 
 /// Compares two `HashMap`s and computes the intersection, values unique to the first map,
@@ -117,21 +78,17 @@ fn compare_hashmaps<K: Eq + std::hash::Hash + std::clone::Clone, V: Clone>(
     (intersection, only_in_a, only_in_b)
 }
 
-/// Check if a File or Directory is hidden
-fn is_hidden(entry: &DirEntry) -> bool {
-    entry
-        .file_name()
-        .to_str()
-        .map(|s| s.starts_with("."))
-        .unwrap_or(false)
-}
+// Map to paths with the same hash
+type FilesMap = HashMap<Hash, Vec<PathBuf>>;
 
+/// Receives file paths from two channels, calculates their hash, and groups them into two maps. 
+/// File paths from r1 go into map1 and from r2 into map2. When one channel closes, it drains the other.
 fn worker(
     r1: Receiver<PathBuf>,
     r2: Receiver<PathBuf>,
-) -> Result<(HashMap<u64, Vec<PathBuf>>, HashMap<u64, Vec<PathBuf>>), io::Error> {
-    let mut map1: HashMap<u64, Vec<PathBuf>> = HashMap::new();
-    let mut map2: HashMap<u64, Vec<PathBuf>> = HashMap::new();
+) -> Result<(FilesMap, FilesMap), io::Error> {
+    let mut map1: FilesMap = HashMap::new();
+    let mut map2: FilesMap = HashMap::new();
 
     loop {
         select! {
@@ -158,6 +115,7 @@ fn worker(
                         map2.entry(hash).or_default().push(path);
                     }
                     Err(_) => {
+                        // r2 closed; drain r2 and exit.
                         for path in r1.iter() {
                             let hash = calculate_file_hash(&path)?;
                             map2.entry(hash).or_default().push(path);
@@ -170,6 +128,15 @@ fn worker(
     }
 
     Ok((map1, map2))
+}
+
+/// Check if a File or Directory is hidden
+fn is_hidden(entry: &DirEntry) -> bool {
+    entry
+        .file_name()
+        .to_str()
+        .map(|s| s.starts_with("."))
+        .unwrap_or(false)
 }
 
 /// Compares two directories and returns their file paths.
@@ -201,39 +168,33 @@ pub fn compare_directories(
     }
 
     // Send messages into both channels.
-    WalkDir::new(dir1)
+    for entry in WalkDir::new(dir1)
         .into_iter()
-        .filter_entry(|e| !skip_hidden || !is_hidden(e))
-        .filter_map(|entry| match entry {
-            Ok(entry) if entry.path().is_file() => Some(Ok(entry.path().to_path_buf())),
-            Ok(_) => None,
-            Err(e) => Some(Err(io::Error::new(io::ErrorKind::Other, e))),
-        })
-        .for_each(|result| match result {
-            Ok(path) => sender1.send(path).unwrap(),
-            Err(e) => panic!("Error retrieving path: {}", e),
-        });
+        .filter_entry(|entry| !skip_hidden || !is_hidden(entry))
+        .filter_map(Result::ok)
+    {
+        if entry.path().is_file() {
+            sender1.send(entry.path().to_path_buf()).unwrap();
+        }
+    }
 
-    WalkDir::new(dir2)
+    for entry in WalkDir::new(dir2)
         .into_iter()
-        .filter_entry(|e| !skip_hidden || !is_hidden(e))
-        .filter_map(|entry| match entry {
-            Ok(entry) if entry.path().is_file() => Some(Ok(entry.path().to_path_buf())),
-            Ok(_) => None,
-            Err(e) => Some(Err(io::Error::new(io::ErrorKind::Other, e))),
-        })
-        .for_each(|result| match result {
-            Ok(path) => sender2.send(path).unwrap(),
-            Err(e) => panic!("Error retrieving path: {}", e),
-        });
+        .filter_entry(|entry| !skip_hidden || !is_hidden(entry))
+        .filter_map(Result::ok)
+    {
+        if entry.path().is_file() {
+            sender2.send(entry.path().to_path_buf()).unwrap();
+        }
+    }
 
     // Close the channels.
     drop(sender1);
     drop(sender2);
 
     // Collect and combine results.
-    let mut combined1: HashMap<u64, Vec<PathBuf>> = HashMap::new();
-    let mut combined2: HashMap<u64, Vec<PathBuf>> = HashMap::new();
+    let mut combined1: HashMap<Hash, Vec<PathBuf>> = HashMap::new();
+    let mut combined2: HashMap<Hash, Vec<PathBuf>> = HashMap::new();
 
     for handle in handles {
         let (map1, map2) = handle.join().expect("Thread panicked").unwrap();
