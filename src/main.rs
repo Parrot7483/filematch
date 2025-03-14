@@ -1,7 +1,11 @@
 use clap::Parser;
-use filematch::compare_directories;
 use serde_json::json;
 use std::path::PathBuf;
+
+mod compare_two_directories;
+mod util;
+
+use crate::compare_two_directories::compare_two_directories;
 
 // Compares files between two directories by hash
 #[derive(Parser)]
@@ -11,6 +15,7 @@ use std::path::PathBuf;
     about = "Compares files between two directories by hash",
     after_help = "If none of --intersection, --dir1, or --dir2 are set, then all are displayed",
 )]
+#[allow(clippy::struct_excessive_bools)]
 struct Cli {
     /// The first directory to compare
     #[arg(required = true)]
@@ -75,12 +80,12 @@ fn main() {
     let dir2 = all || args.dir2;
 
     // Call the function to compare directories
-    let (intersection_paths, unique_dir1_paths, unique_dir2_paths) = compare_directories(
+    let (intersection_paths, unique_dir1_paths, unique_dir2_paths) = compare_two_directories(
         &args.directory1,
         &args.directory2,
-        args.sort,
-        args.skip_hidden,
         args.relative,
+        args.skip_hidden,
+        args.sort,
         intersection,
         dir1,
         dir2,

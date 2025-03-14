@@ -1,10 +1,11 @@
-use filematch::compare_directories;
 use rand_xoshiro::rand_core::{RngCore, SeedableRng};
 use rand_xoshiro::Xoshiro256Plus;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, ErrorKind, Write};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+
+use filematch::compare_two_directories::compare_two_directories;
 
 fn generate_deterministic_file(path: &Path, size: u64, init: u64) -> std::io::Result<()> {
     // Create a buffered writer to reduce the overhead of multiple small writes
@@ -221,7 +222,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Always do one warm up run
     print!("Warm up run...");
     io::stdout().flush().unwrap();
-    let (_, _, _) = compare_directories(
+    let (_, _, _) = compare_two_directories(
         &dir_a_path,
         &dir_b_path,
         false,
@@ -236,7 +237,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for i in 0..times_to_run {
         let start = Instant::now();
         // Call your function here.
-        let (Some(mut dir_12), Some(mut dir_1), Some(mut dir_2)) = compare_directories(
+        let (Some(mut dir_12), Some(mut dir_1), Some(mut dir_2)) = compare_two_directories(
             &dir_a_path,
             &dir_b_path,
             false,
@@ -246,7 +247,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             true,
             true,
         ) else {
-            panic!("compare_directories did not return the expected result.");
+            panic!("compare_two_directories did not return the expected result.");
         };
 
         let elapsed = start.elapsed();

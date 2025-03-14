@@ -9,7 +9,7 @@ publish = false
 
 [dependencies]
 blake3 = "1.5.5"
-clap = { version = "4", default-features = false, features = ["std", "help", "usage", "error-context", "derive" ] }
+clap = { version = "4", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
 crossbeam-channel = "0.5.14"
 num_cpus = "1.16.0"
 walkdir = "2"
@@ -26,12 +26,16 @@ strip = true
 lto = true
 panic = "abort"
 debug = false
+opt-level = 3
+codegen-units = 1
 rustflags = ["-C", "target-feature=+aes,+sse2"]
 
 [profile.bench]
-strip = false
-lto = false
-debug = true
+strip = true
+lto = true
+debug = false
+opt-level = 3
+codegen-units = 1
 rustflags = ["-C", "target-feature=+aes,+sse2"]
 
 [[bin]]
@@ -42,4 +46,3 @@ test = false
 [[bench]]
 name = "benchmark"
 harness = false
-# TODO: Prevent running tests when running benchmarks
