@@ -39,6 +39,7 @@ filematch is developed in Rust and utilizes the following crates:
 To compile the program, simply run `cargo build --release` or `nix build`.
 
 ## Planned improvements and features:
+- [ ] Use ![update_mmap_rayon](https://docs.rs/blake3/latest/blake3/struct.Hasher.html#method.update_mmap_rayon) 
 - [ ] Detect running on HDD. Do not multithread in that case.
 
 ### Packaging
